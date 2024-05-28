@@ -438,10 +438,10 @@ def _simple_test_transmission_(u, v, p):
     return random.random()<p
 
 
-def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(), 
+def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(), test_recovery=None,
                 initial_infecteds=None, initial_recovereds = None, 
                 rho = None, tmin = 0, tmax = float('Inf'),
-                return_full_data = False, sim_kwargs = None):
+                return_full_data = False, sim_kwargs = None, progress = False):
     #tested in test_discrete_SIR
     r'''
     Simulates an SIR epidemic on G in discrete time, allowing user-specified transmission rules
@@ -594,6 +594,10 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
             susceptible[u] = False
         
     infecteds = set(initial_infecteds)
+    totR= 0
+    nI = len(initial_infecteds)
+    nR = 0
+    nS = N - nI
     
     while infecteds and t[-1]<tmax:
         new_infecteds = set()
@@ -605,29 +609,50 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
                     new_infecteds.add(v)
                     susceptible[v] = False
                     infector[v] = [u]
+                    nS -= 1
                 elif return_full_data and v in new_infecteds and test_transmission(u, v, *args):
                     #if ``v`` already infected on this round, consider if it is
                     #multiply infected this round.
                     infector[v].append(u)
                     
-
+        next_time = t[-1]+1
         if return_full_data:
             for v in infector.keys():
                 transmissions.append((t[-1], random.choice(infector[v]), v))
-            next_time = t[-1]+1
+            
             if next_time <= tmax:
-                for u in infecteds:
-                    node_history[u][0].append(next_time)
-                    node_history[u][1].append('R')
+                if test_recovery is None:
+                    for u in infecteds:
+                        node_history[u][0].append(next_time)
+                        node_history[u][1].append('R')
+                        
                 for v in new_infecteds:
                     node_history[v][0].append(next_time)
                     node_history[v][1].append('I')
 
-        infecteds = new_infecteds
+        #infecteds = infecteds.union()
+        if test_recovery is None:
+            ## all infecteds become recovered
+            totR += len(infecteds)
+            #infecteds = new_infecteds
+        else:
+            ## TODO: check old infected
+            #rem_inf = 
+            for u in infecteds:
+                if test_recovery(u):
+                    if return_full_data:
+                        node_history[u][0].append(next_time)
+                        node_history[u][1].append('R')
+                    totR += 1
+                else:
+                    new_infecteds.add(u)
 
-        R.append(R[-1]+I[-1])
+        infecteds = new_infecteds
+        #print(f"time {next_time}, nI: {len(infecteds)}")
+
+        R.append(totR)
         I.append(len(infecteds))
-        S.append(S[-1]-I[-1])
+        S.append(nS)
         t.append(t[-1]+1)
     if not return_full_data:
         return np.array(t), np.array(S), np.array(I), \
